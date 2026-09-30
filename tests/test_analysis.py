@@ -157,3 +157,31 @@ def test_analysis_rejects_invalid_learning_min_count() -> None:
 
     with pytest.raises(ValueError, match="learning_min_count"):
         analyze_book(book, learning_min_count=0)
+
+
+def test_known_profile_filters_learning_candidates_and_tracks_coverage() -> None:
+    book = Book(
+        title="Known",
+        author=None,
+        source_path="known.epub",
+        sections=(
+            _section(
+                "c1",
+                1,
+                "One",
+                "The child child brain brain brain memory memory memory.",
+            ),
+        ),
+    )
+
+    result = analyze_book(
+        book,
+        learning_min_count=2,
+        known_words={"children", "brain"},
+    )
+
+    assert result.known_profile_enabled
+    assert result.known_profile_size == 2
+    assert result.known_lemmas == frozenset({"child", "brain"})
+    assert result.known_content_tokens == 5
+    assert [stat.lemma for stat in result.learning_stats] == ["memory"]

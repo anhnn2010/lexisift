@@ -47,3 +47,19 @@ def test_learning_candidates_reward_section_spread() -> None:
     assert result[1].priority_score == 12.5
     assert result[0].section_coverage_percentage == 100.0
     assert result[1].section_coverage_percentage == 25.0
+
+
+def test_learning_candidates_exclude_known_lemmas() -> None:
+    stats = (
+        _lemma("brain", 10, 4),
+        _lemma("memory", 8, 4),
+    )
+
+    result = build_learning_stats(
+        stats,
+        analyzed_sections=4,
+        min_count=1,
+        excluded_lemmas={"brain"},
+    )
+
+    assert [stat.lemma for stat in result] == ["memory"]

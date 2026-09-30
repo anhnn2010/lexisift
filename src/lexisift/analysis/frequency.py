@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Collection
 
+from lexisift.analysis.known_words import resolve_known_lemmas
 from lexisift.analysis.learning import build_learning_stats
 from lexisift.analysis.lemmatizer import build_lemma_map
 from lexisift.analysis.stopwords import is_stopword
@@ -27,6 +29,7 @@ def analyze_book(
     book: Book,
     scope: AnalysisScope = AnalysisScope.ALL,
     learning_min_count: int = 3,
+    known_words: Collection[str] | None = None,
 ) -> AnalysisResult:
     """Analyze words, word families, coverage, and learning candidates."""
 
@@ -132,10 +135,19 @@ def analyze_book(
     unique_content_words = sum(1 for stat in word_stats if not stat.is_stopword)
     unique_content_lemmas = sum(1 for stat in lemma_stats if not stat.is_stopword)
     analyzed_sections = sum(1 for stat in section_stats if stat.included)
+    known_profile_enabled = known_words is not None
+    known_profile = frozenset(known_words or ())
+    known_lemmas = resolve_known_lemmas(known_profile, lemma_stats)
+    known_content_tokens = sum(
+        stat.count
+        for stat in lemma_stats
+        if not stat.is_stopword and stat.lemma in known_lemmas
+    )
     learning_stats = build_learning_stats(
         lemma_stats,
         analyzed_sections=analyzed_sections,
         min_count=learning_min_count,
+        excluded_lemmas=known_lemmas,
     )
 
     return AnalysisResult(
@@ -148,6 +160,10 @@ def analyze_book(
         unique_lemmas=len(lemma_counts),
         unique_content_lemmas=unique_content_lemmas,
         learning_min_count=learning_min_count,
+        known_profile_enabled=known_profile_enabled,
+        known_profile_size=len(known_profile),
+        known_lemmas=known_lemmas,
+        known_content_tokens=known_content_tokens,
         section_stats=section_stats,
         word_stats=word_stats,
         lemma_stats=lemma_stats,

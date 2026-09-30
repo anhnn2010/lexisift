@@ -8,6 +8,14 @@ from pathlib import Path
 from lexisift.models import AnalysisResult, SectionKind
 
 
+def _known_marker(result: AnalysisResult, lemma: str) -> str:
+    """Return CSV marker for profile-known state."""
+
+    if not result.known_profile_enabled:
+        return ""
+    return "yes" if lemma in result.known_lemmas else "no"
+
+
 def _write_vocabulary_csv(result: AnalysisResult, path: Path) -> None:
     with path.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.writer(stream)
@@ -16,6 +24,7 @@ def _write_vocabulary_csv(result: AnalysisResult, path: Path) -> None:
                 "word",
                 "lemma",
                 "is_stopword",
+                "is_known",
                 "count",
                 "section_count",
                 "first_seen_section",
@@ -28,6 +37,7 @@ def _write_vocabulary_csv(result: AnalysisResult, path: Path) -> None:
                     stat.word,
                     stat.lemma,
                     "yes" if stat.is_stopword else "no",
+                    _known_marker(result, stat.lemma),
                     stat.count,
                     stat.section_count,
                     stat.first_seen_section,
@@ -40,7 +50,15 @@ def _write_content_words_csv(result: AnalysisResult, path: Path) -> None:
     with path.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.writer(stream)
         writer.writerow(
-            ["word", "lemma", "count", "section_count", "first_seen_section", "percentage"]
+            [
+                "word",
+                "lemma",
+                "is_known",
+                "count",
+                "section_count",
+                "first_seen_section",
+                "percentage",
+            ]
         )
         for stat in result.word_stats:
             if stat.is_stopword:
@@ -49,6 +67,7 @@ def _write_content_words_csv(result: AnalysisResult, path: Path) -> None:
                 [
                     stat.word,
                     stat.lemma,
+                    _known_marker(result, stat.lemma),
                     stat.count,
                     stat.section_count,
                     stat.first_seen_section,
@@ -64,6 +83,7 @@ def _write_lemmas_csv(result: AnalysisResult, path: Path) -> None:
             [
                 "lemma",
                 "is_stopword",
+                "is_known",
                 "count",
                 "section_count",
                 "first_seen_section",
@@ -76,6 +96,7 @@ def _write_lemmas_csv(result: AnalysisResult, path: Path) -> None:
                 [
                     stat.lemma,
                     "yes" if stat.is_stopword else "no",
+                    _known_marker(result, stat.lemma),
                     stat.count,
                     stat.section_count,
                     stat.first_seen_section,
@@ -114,6 +135,43 @@ def _write_learning_words_csv(result: AnalysisResult, path: Path) -> None:
                     stat.first_seen_section,
                     f"{stat.book_percentage:.6f}",
                     f"{stat.priority_score:.3f}",
+                    " | ".join(stat.forms),
+                ]
+            )
+
+
+def _write_profile_lemmas_csv(
+    result: AnalysisResult,
+    path: Path,
+    *,
+    known: bool,
+) -> None:
+    """Write known or unknown content lemma families observed in the book."""
+
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(
+            [
+                "lemma",
+                "count",
+                "section_count",
+                "first_seen_section",
+                "percentage",
+                "forms",
+            ]
+        )
+        for stat in result.lemma_stats:
+            if stat.is_stopword:
+                continue
+            if (stat.lemma in result.known_lemmas) is not known:
+                continue
+            writer.writerow(
+                [
+                    stat.lemma,
+                    stat.count,
+                    stat.section_count,
+                    stat.first_seen_section,
+                    f"{stat.percentage:.6f}",
                     " | ".join(stat.forms),
                 ]
             )
@@ -191,10 +249,48 @@ def _write_summary(result: AnalysisResult, path: Path) -> None:
         f"Unique content words: {result.unique_content_words}",
         f"Unique lemmas: {result.unique_lemmas}",
         f"Unique content lemmas: {result.unique_content_lemmas}",
-        f"Learning candidates (count >= {result.learning_min_count}): {len(result.learning_stats)}",
-        "",
-        "Lemma coverage:",
     ]
+
+    if result.known_profile_enabled:
+        known_content_lemmas = sum(
+            1
+            for stat in result.lemma_stats
+            if not stat.is_stopword and stat.lemma in result.known_lemmas
+        )
+        unknown_content_lemmas = result.unique_content_lemmas - known_content_lemmas
+        known_content_coverage = (
+            result.known_content_tokens / result.content_tokens * 100.0
+            if result.content_tokens
+            else 0.0
+        )
+        estimated_reading_tokens = (
+            result.total_tokens - result.content_tokens + result.known_content_tokens
+        )
+        estimated_reading_coverage = (
+            estimated_reading_tokens / result.total_tokens * 100.0
+            if result.total_tokens
+            else 0.0
+        )
+        lines.extend(
+            [
+                "",
+                "Known vocabulary profile:",
+                f"Profile entries: {result.known_profile_size}",
+                f"Known content lemmas in book: {known_content_lemmas}",
+                f"Unknown content lemmas in book: {unknown_content_lemmas}",
+                f"Known content-token coverage: {known_content_coverage:.2f}%",
+                f"Estimated reading-token coverage: {estimated_reading_coverage:.2f}%",
+            ]
+        )
+
+    lines.extend(
+        [
+            "Learning candidates "
+            f"(count >= {result.learning_min_count}): {len(result.learning_stats)}",
+            "",
+            "Lemma coverage:",
+        ]
+    )
     for rank in (100, 500, 1000, 2000):
         coverage = _coverage_at(result, rank)
         if coverage is not None:
@@ -223,6 +319,16 @@ def write_reports(result: AnalysisResult, output_dir: str | Path) -> Path:
     _write_content_words_csv(result, destination / "content_words.csv")
     _write_lemmas_csv(result, destination / "lemmas.csv")
     _write_learning_words_csv(result, destination / "learning_words.csv")
+    if result.known_profile_enabled:
+        _write_profile_lemmas_csv(
+            result, destination / "known_words.csv", known=True
+        )
+        _write_profile_lemmas_csv(
+            result, destination / "unknown_words.csv", known=False
+        )
+    else:
+        (destination / "known_words.csv").unlink(missing_ok=True)
+        (destination / "unknown_words.csv").unlink(missing_ok=True)
     _write_coverage_csv(result, destination / "coverage.csv")
     _write_sections_csv(result, destination / "sections.csv")
     _write_summary(result, destination / "summary.txt")

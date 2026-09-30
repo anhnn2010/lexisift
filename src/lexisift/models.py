@@ -146,6 +146,10 @@ class AnalysisResult:
     unique_lemmas: int
     unique_content_lemmas: int
     learning_min_count: int
+    known_profile_enabled: bool
+    known_profile_size: int
+    known_lemmas: frozenset[str]
+    known_content_tokens: int
     section_stats: tuple[SectionStat, ...]
     word_stats: tuple[WordStat, ...]
     lemma_stats: tuple[LemmaStat, ...]
