@@ -3,27 +3,82 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
+
+
+class SectionKind(str, Enum):
+    """Semantic category assigned to one EPUB spine document."""
+
+    TITLE_PAGE = "title_page"
+    COPYRIGHT = "copyright"
+    DEDICATION = "dedication"
+    TOC = "toc"
+    FRONTMATTER = "frontmatter"
+    INTRODUCTION = "introduction"
+    CHAPTER = "chapter"
+    CONCLUSION = "conclusion"
+    APPENDIX = "appendix"
+    ACKNOWLEDGMENTS = "acknowledgments"
+    ABOUT_AUTHOR = "about_author"
+    BACKMATTER = "backmatter"
+    OTHER = "other"
+
+
+_MAIN_CONTENT_KINDS = frozenset(
+    {
+        SectionKind.INTRODUCTION,
+        SectionKind.CHAPTER,
+        SectionKind.CONCLUSION,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
-class Chapter:
-    """One readable document in EPUB spine order."""
+class Section:
+    """One readable EPUB document in declared spine order."""
 
-    chapter_id: str
+    section_id: str
     order: int
     href: str
     title: str
     text: str
+    kind: SectionKind
+    semantics: frozenset[str] = frozenset()
+
+    @property
+    def is_main_content(self) -> bool:
+        """Return whether this section belongs to the main reading content."""
+
+        return self.kind in _MAIN_CONTENT_KINDS
 
 
 @dataclass(frozen=True, slots=True)
 class Book:
-    """An EPUB book and its ordered readable chapters."""
+    """An EPUB book and its ordered readable sections."""
 
     title: str
     author: str | None
     source_path: str
-    chapters: tuple[Chapter, ...]
+    sections: tuple[Section, ...]
+
+
+class AnalysisScope(str, Enum):
+    """Which EPUB sections contribute to vocabulary statistics."""
+
+    ALL = "all"
+    MAIN = "main"
+
+
+@dataclass(frozen=True, slots=True)
+class SectionStat:
+    """Analysis metadata for one EPUB section."""
+
+    section_id: str
+    order: int
+    title: str
+    kind: SectionKind
+    token_count: int
+    included: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +87,8 @@ class WordStat:
 
     word: str
     count: int
-    chapter_count: int
+    section_count: int
+    first_seen_section: int
     percentage: float
 
 
@@ -41,6 +97,8 @@ class AnalysisResult:
     """Vocabulary analysis result for one book."""
 
     book: Book
+    scope: AnalysisScope
     total_tokens: int
     unique_words: int
+    section_stats: tuple[SectionStat, ...]
     word_stats: tuple[WordStat, ...]

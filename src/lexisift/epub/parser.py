@@ -9,7 +9,8 @@ from pathlib import Path
 from urllib.parse import unquote, urldefrag
 from xml.etree import ElementTree as ET
 
-from lexisift.models import Book, Chapter
+from lexisift.epub.section_classifier import classify_section
+from lexisift.models import Book, Section
 
 _CONTAINER_PATH = "META-INF/container.xml"
 _CONTAINER_NS = "urn:oasis:names:tc:opendocument:xmlns:container"
@@ -35,10 +36,13 @@ class _XhtmlTextExtractor(HTMLParser):
         self._chunks: list[str] = []
         self._heading_chunks: list[str] = []
         self._title_chunks: list[str] = []
+        self._semantics: set[str] = set()
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        del attrs
         tag = tag.casefold()
+        for name, value in attrs:
+            if value and name.casefold() in {"epub:type", "type"}:
+                self._semantics.update(part.casefold() for part in value.split())
         if tag in self._IGNORED_TAGS:
             self._ignored_depth += 1
             return
@@ -93,6 +97,12 @@ class _XhtmlTextExtractor(HTMLParser):
             return heading
         title = " ".join("".join(self._title_chunks).split())
         return title or None
+
+    @property
+    def semantics(self) -> frozenset[str]:
+        """Return EPUB semantic type tokens found in the document."""
+
+        return frozenset(self._semantics)
 
 
 def _read_xml(epub: zipfile.ZipFile, path: str) -> ET.Element:
@@ -149,11 +159,11 @@ def _decode_document(payload: bytes) -> str:
         return payload.decode("utf-8", errors="replace")
 
 
-def _extract_document(payload: bytes, fallback_title: str) -> tuple[str, str]:
+def _extract_document(payload: bytes, fallback_title: str) -> tuple[str, str, frozenset[str]]:
     parser = _XhtmlTextExtractor()
     parser.feed(_decode_document(payload))
     parser.close()
-    return parser.text, parser.title or fallback_title
+    return parser.text, parser.title or fallback_title, parser.semantics
 
 
 def load_epub(path: str | Path) -> Book:
@@ -180,7 +190,7 @@ def load_epub(path: str | Path) -> Book:
             if item_id and href:
                 manifest[item_id] = (href, media_type)
 
-        chapters: list[Chapter] = []
+        sections: list[Section] = []
         for order, itemref in enumerate(
             package.findall(f".//{{{_OPF_NS}}}spine/{{{_OPF_NS}}}itemref"), start=1
         ):
@@ -197,20 +207,27 @@ def load_epub(path: str | Path) -> Book:
             except KeyError as exc:
                 raise EpubError(f"Spine item is missing from EPUB archive: {member}") from exc
 
-            text, title = _extract_document(payload, fallback_title=Path(member).stem)
+            text, title, semantics = _extract_document(payload, fallback_title=Path(member).stem)
             if not text:
                 continue
-            chapters.append(
-                Chapter(
-                    chapter_id=idref,
-                    order=len(chapters) + 1,
+            sections.append(
+                Section(
+                    section_id=idref,
+                    order=len(sections) + 1,
                     href=member,
                     title=title,
                     text=text,
+                    kind=classify_section(
+                        section_id=idref,
+                        title=title,
+                        href=member,
+                        semantics=semantics,
+                    ),
+                    semantics=semantics,
                 )
             )
 
-        if not chapters:
+        if not sections:
             raise EpubError("No readable XHTML/HTML documents were found in the EPUB spine")
 
         title = _metadata_text(package, "title") or epub_path.stem
@@ -219,5 +236,5 @@ def load_epub(path: str | Path) -> Book:
             title=title,
             author=author,
             source_path=str(epub_path),
-            chapters=tuple(chapters),
+            sections=tuple(sections),
         )

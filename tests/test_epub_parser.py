@@ -1,4 +1,4 @@
-"""Integration test for the minimal EPUB parser."""
+"""Integration tests for the EPUB parser and section classification."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import zipfile
 from pathlib import Path
 
 from lexisift.epub import load_epub
+from lexisift.models import SectionKind
 
 
 def _write_test_epub(path: Path) -> None:
@@ -32,8 +33,18 @@ def _write_test_epub(path: Path) -> None:
   </spine>
 </package>
 """
-    chapter1 = """<html><head><title>Fallback One</title></head><body><h1>First</h1><p>Hello one.</p></body></html>"""
-    chapter2 = """<html><head><title>Fallback Two</title></head><body><h1>Second</h1><p>Hello two.</p></body></html>"""
+    chapter1 = """
+<html>
+  <head><title>Fallback One</title></head>
+  <body><h1>CHAPTER 1</h1><p>Hello one.</p></body>
+</html>
+"""
+    chapter2 = """
+<html xmlns:epub="http://www.idpf.org/2007/ops">
+  <head><title>Fallback Two</title></head>
+  <body epub:type="chapter"><h1>Second</h1><p>Hello two.</p></body>
+</html>
+"""
 
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("mimetype", "application/epub+zip")
@@ -51,15 +62,19 @@ def test_load_epub_follows_spine_order(tmp_path: Path) -> None:
 
     assert book.title == "Test Book"
     assert book.author == "Test Author"
-    assert [chapter.chapter_id for chapter in book.chapters] == ["c2", "c1"]
-    assert [chapter.title for chapter in book.chapters] == ["Second", "First"]
+    assert [section.section_id for section in book.sections] == ["c2", "c1"]
+    assert [section.title for section in book.sections] == ["Second", "CHAPTER 1"]
+    assert [section.kind for section in book.sections] == [
+        SectionKind.CHAPTER,
+        SectionKind.CHAPTER,
+    ]
 
 
-def test_html_title_is_not_in_visible_chapter_text(tmp_path: Path) -> None:
+def test_html_title_is_not_in_visible_section_text(tmp_path: Path) -> None:
     epub_path = tmp_path / "book.epub"
     _write_test_epub(epub_path)
 
     book = load_epub(epub_path)
 
-    assert "Fallback Two" not in book.chapters[0].text
-    assert "Hello two." in book.chapters[0].text
+    assert "Fallback Two" not in book.sections[0].text
+    assert "Hello two." in book.sections[0].text
