@@ -4,14 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lexisift"
-version = "0.1.1"
+version = "0.2.0"
 description = "Understand the vocabulary behind a book."
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [
   { name = "LexiSift contributors" },
 ]
-dependencies = []
+dependencies = [
+  "lemminflect>=0.2.3,<0.3",
+]
 
 [project.optional-dependencies]
 dev = [

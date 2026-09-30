@@ -55,6 +55,8 @@ def _run_analyze(epub_path: Path, output_dir: Path, scope: AnalysisScope) -> int
     print(f"Analyzed sections: {analyzed_sections}")
     print(f"Total word tokens: {result.total_tokens}")
     print(f"Unique normalized words: {result.unique_words}")
+    print(f"Unique lemmas: {result.unique_lemmas}")
+    print(f"Unique content lemmas: {result.unique_content_lemmas}")
     print(f"Reports: {destination}")
     return 0
 

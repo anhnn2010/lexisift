@@ -1,14 +1,18 @@
-"""Book-level word frequency analysis."""
+"""Book-level word, lemma, and coverage analysis."""
 
 from __future__ import annotations
 
 from collections import Counter, defaultdict
 
+from lexisift.analysis.lemmatizer import build_lemma_map
+from lexisift.analysis.stopwords import is_stopword
 from lexisift.analysis.tokenizer import tokenize
 from lexisift.models import (
     AnalysisResult,
     AnalysisScope,
     Book,
+    CoverageStat,
+    LemmaStat,
     SectionStat,
     WordStat,
 )
@@ -22,7 +26,7 @@ def analyze_book(
     book: Book,
     scope: AnalysisScope = AnalysisScope.ALL,
 ) -> AnalysisResult:
-    """Count normalized words and section spread for a book."""
+    """Analyze raw words, word families, stop words, and cumulative coverage."""
 
     tokenized_sections = [(section, tokenize(section.text)) for section in book.sections]
     section_stats = tuple(
@@ -56,9 +60,14 @@ def analyze_book(
             first_seen_by_word.setdefault(word, section.order)
 
     total_tokens = sum(counts.values())
-    stats = tuple(
+    vocabulary = frozenset(counts)
+    lemma_by_word = build_lemma_map(vocabulary)
+
+    word_stats = tuple(
         WordStat(
             word=word,
+            lemma=lemma_by_word[word],
+            is_stopword=is_stopword(word) or is_stopword(lemma_by_word[word]),
             count=count,
             section_count=len(section_ids_by_word[word]),
             first_seen_section=first_seen_by_word[word],
@@ -67,11 +76,68 @@ def analyze_book(
         for word, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     )
 
+    lemma_counts: Counter[str] = Counter()
+    section_ids_by_lemma: defaultdict[str, set[str]] = defaultdict(set)
+    first_seen_by_lemma: dict[str, int] = {}
+    forms_by_lemma: defaultdict[str, set[str]] = defaultdict(set)
+
+    for section, tokens in included:
+        section_lemmas: set[str] = set()
+        for word in tokens:
+            lemma = lemma_by_word[word]
+            lemma_counts[lemma] += 1
+            forms_by_lemma[lemma].add(word)
+            section_lemmas.add(lemma)
+        for lemma in section_lemmas:
+            section_ids_by_lemma[lemma].add(section.section_id)
+            first_seen_by_lemma.setdefault(lemma, section.order)
+
+    lemma_stats = tuple(
+        LemmaStat(
+            lemma=lemma,
+            is_stopword=is_stopword(lemma),
+            count=count,
+            section_count=len(section_ids_by_lemma[lemma]),
+            first_seen_section=first_seen_by_lemma[lemma],
+            percentage=(count / total_tokens * 100.0) if total_tokens else 0.0,
+            forms=tuple(
+                sorted(forms_by_lemma[lemma], key=lambda form: (-counts[form], form))
+            ),
+        )
+        for lemma, count in sorted(lemma_counts.items(), key=lambda item: (-item[1], item[0]))
+    )
+
+    coverage_rows: list[CoverageStat] = []
+    cumulative_count = 0
+    for rank, stat in enumerate(lemma_stats, start=1):
+        cumulative_count += stat.count
+        coverage_rows.append(
+            CoverageStat(
+                rank=rank,
+                lemma=stat.lemma,
+                count=stat.count,
+                cumulative_count=cumulative_count,
+                cumulative_percentage=(cumulative_count / total_tokens * 100.0)
+                if total_tokens
+                else 0.0,
+            )
+        )
+
+    content_tokens = sum(stat.count for stat in word_stats if not stat.is_stopword)
+    unique_content_words = sum(1 for stat in word_stats if not stat.is_stopword)
+    unique_content_lemmas = sum(1 for stat in lemma_stats if not stat.is_stopword)
+
     return AnalysisResult(
         book=book,
         scope=scope,
         total_tokens=total_tokens,
+        content_tokens=content_tokens,
         unique_words=len(counts),
+        unique_content_words=unique_content_words,
+        unique_lemmas=len(lemma_counts),
+        unique_content_lemmas=unique_content_lemmas,
         section_stats=section_stats,
-        word_stats=stats,
+        word_stats=word_stats,
+        lemma_stats=lemma_stats,
+        coverage_stats=tuple(coverage_rows),
     )

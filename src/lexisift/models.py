@@ -83,13 +83,39 @@ class SectionStat:
 
 @dataclass(frozen=True, slots=True)
 class WordStat:
-    """Frequency statistics for one normalized word."""
+    """Frequency statistics for one normalized surface word."""
 
     word: str
+    lemma: str
+    is_stopword: bool
     count: int
     section_count: int
     first_seen_section: int
     percentage: float
+
+
+@dataclass(frozen=True, slots=True)
+class LemmaStat:
+    """Aggregated statistics for one conservative word-family canonical form."""
+
+    lemma: str
+    is_stopword: bool
+    count: int
+    section_count: int
+    first_seen_section: int
+    percentage: float
+    forms: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CoverageStat:
+    """Cumulative token coverage after including one ranked lemma."""
+
+    rank: int
+    lemma: str
+    count: int
+    cumulative_count: int
+    cumulative_percentage: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +125,12 @@ class AnalysisResult:
     book: Book
     scope: AnalysisScope
     total_tokens: int
+    content_tokens: int
     unique_words: int
+    unique_content_words: int
+    unique_lemmas: int
+    unique_content_lemmas: int
     section_stats: tuple[SectionStat, ...]
     word_stats: tuple[WordStat, ...]
+    lemma_stats: tuple[LemmaStat, ...]
+    coverage_stats: tuple[CoverageStat, ...]

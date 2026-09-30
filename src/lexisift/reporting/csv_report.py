@@ -12,16 +12,93 @@ def _write_vocabulary_csv(result: AnalysisResult, path: Path) -> None:
     with path.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.writer(stream)
         writer.writerow(
-            ["word", "count", "section_count", "first_seen_section", "percentage"]
+            [
+                "word",
+                "lemma",
+                "is_stopword",
+                "count",
+                "section_count",
+                "first_seen_section",
+                "percentage",
+            ]
         )
         for stat in result.word_stats:
             writer.writerow(
                 [
                     stat.word,
+                    stat.lemma,
+                    "yes" if stat.is_stopword else "no",
                     stat.count,
                     stat.section_count,
                     stat.first_seen_section,
                     f"{stat.percentage:.6f}",
+                ]
+            )
+
+
+def _write_content_words_csv(result: AnalysisResult, path: Path) -> None:
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(
+            ["word", "lemma", "count", "section_count", "first_seen_section", "percentage"]
+        )
+        for stat in result.word_stats:
+            if stat.is_stopword:
+                continue
+            writer.writerow(
+                [
+                    stat.word,
+                    stat.lemma,
+                    stat.count,
+                    stat.section_count,
+                    stat.first_seen_section,
+                    f"{stat.percentage:.6f}",
+                ]
+            )
+
+
+def _write_lemmas_csv(result: AnalysisResult, path: Path) -> None:
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(
+            [
+                "lemma",
+                "is_stopword",
+                "count",
+                "section_count",
+                "first_seen_section",
+                "percentage",
+                "forms",
+            ]
+        )
+        for stat in result.lemma_stats:
+            writer.writerow(
+                [
+                    stat.lemma,
+                    "yes" if stat.is_stopword else "no",
+                    stat.count,
+                    stat.section_count,
+                    stat.first_seen_section,
+                    f"{stat.percentage:.6f}",
+                    " | ".join(stat.forms),
+                ]
+            )
+
+
+def _write_coverage_csv(result: AnalysisResult, path: Path) -> None:
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(
+            ["rank", "lemma", "count", "cumulative_count", "cumulative_percentage"]
+        )
+        for stat in result.coverage_stats:
+            writer.writerow(
+                [
+                    stat.rank,
+                    stat.lemma,
+                    stat.count,
+                    stat.cumulative_count,
+                    f"{stat.cumulative_percentage:.6f}",
                 ]
             )
 
@@ -48,12 +125,23 @@ def _write_sections_csv(result: AnalysisResult, path: Path) -> None:
             )
 
 
+def _coverage_at(result: AnalysisResult, rank: int) -> float | None:
+    """Return cumulative coverage at a rank, or ``None`` when the book has fewer lemmas."""
+
+    if rank <= 0 or rank > len(result.coverage_stats):
+        return None
+    return result.coverage_stats[rank - 1].cumulative_percentage
+
+
 def _write_summary(result: AnalysisResult, path: Path) -> None:
     author = result.book.author or "Unknown"
     main_chapters = sum(
         1 for section in result.book.sections if section.kind is SectionKind.CHAPTER
     )
     included_sections = sum(1 for stat in result.section_stats if stat.included)
+    content_share = (
+        result.content_tokens / result.total_tokens * 100.0 if result.total_tokens else 0.0
+    )
     lines = [
         "LexiSift analysis",
         "=================",
@@ -64,14 +152,28 @@ def _write_summary(result: AnalysisResult, path: Path) -> None:
         f"Main chapters: {main_chapters}",
         f"Analyzed sections: {included_sections}",
         f"Total word tokens: {result.total_tokens}",
+        f"Content-word tokens: {result.content_tokens} ({content_share:.1f}%)",
         f"Unique normalized words: {result.unique_words}",
+        f"Unique content words: {result.unique_content_words}",
+        f"Unique lemmas: {result.unique_lemmas}",
+        f"Unique content lemmas: {result.unique_content_lemmas}",
         "",
-        "Top 20 words:",
+        "Lemma coverage:",
     ]
-    for index, stat in enumerate(result.word_stats[:20], start=1):
+    for rank in (100, 500, 1000, 2000):
+        coverage = _coverage_at(result, rank)
+        if coverage is not None:
+            lines.append(f"Top {rank:>4} lemmas: {coverage:>6.2f}%")
+
+    lines.extend(["", "Top 20 content lemmas:"])
+    content_lemmas = [stat for stat in result.lemma_stats if not stat.is_stopword]
+    for index, stat in enumerate(content_lemmas[:20], start=1):
+        forms = ", ".join(stat.forms[:4])
+        if len(stat.forms) > 4:
+            forms += ", ..."
         lines.append(
-            f"{index:>2}. {stat.word:<24} {stat.count:>7} "
-            f"({stat.section_count} sections, {stat.percentage:.3f}%)"
+            f"{index:>2}. {stat.lemma:<24} {stat.count:>7} "
+            f"({stat.section_count} sections; forms: {forms})"
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -83,6 +185,9 @@ def write_reports(result: AnalysisResult, output_dir: str | Path) -> Path:
     destination.mkdir(parents=True, exist_ok=True)
 
     _write_vocabulary_csv(result, destination / "vocabulary.csv")
+    _write_content_words_csv(result, destination / "content_words.csv")
+    _write_lemmas_csv(result, destination / "lemmas.csv")
+    _write_coverage_csv(result, destination / "coverage.csv")
     _write_sections_csv(result, destination / "sections.csv")
     _write_summary(result, destination / "summary.txt")
     return destination
