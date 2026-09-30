@@ -85,6 +85,40 @@ def _write_lemmas_csv(result: AnalysisResult, path: Path) -> None:
             )
 
 
+def _write_learning_words_csv(result: AnalysisResult, path: Path) -> None:
+    """Write ranked, repeated content lemmas intended for learning review."""
+
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(
+            [
+                "rank",
+                "lemma",
+                "count",
+                "section_count",
+                "section_coverage_percentage",
+                "first_seen_section",
+                "book_percentage",
+                "priority_score",
+                "forms",
+            ]
+        )
+        for stat in result.learning_stats:
+            writer.writerow(
+                [
+                    stat.rank,
+                    stat.lemma,
+                    stat.count,
+                    stat.section_count,
+                    f"{stat.section_coverage_percentage:.2f}",
+                    stat.first_seen_section,
+                    f"{stat.book_percentage:.6f}",
+                    f"{stat.priority_score:.3f}",
+                    " | ".join(stat.forms),
+                ]
+            )
+
+
 def _write_coverage_csv(result: AnalysisResult, path: Path) -> None:
     with path.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.writer(stream)
@@ -157,6 +191,7 @@ def _write_summary(result: AnalysisResult, path: Path) -> None:
         f"Unique content words: {result.unique_content_words}",
         f"Unique lemmas: {result.unique_lemmas}",
         f"Unique content lemmas: {result.unique_content_lemmas}",
+        f"Learning candidates (count >= {result.learning_min_count}): {len(result.learning_stats)}",
         "",
         "Lemma coverage:",
     ]
@@ -187,6 +222,7 @@ def write_reports(result: AnalysisResult, output_dir: str | Path) -> Path:
     _write_vocabulary_csv(result, destination / "vocabulary.csv")
     _write_content_words_csv(result, destination / "content_words.csv")
     _write_lemmas_csv(result, destination / "lemmas.csv")
+    _write_learning_words_csv(result, destination / "learning_words.csv")
     _write_coverage_csv(result, destination / "coverage.csv")
     _write_sections_csv(result, destination / "sections.csv")
     _write_summary(result, destination / "summary.txt")

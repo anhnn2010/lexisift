@@ -2,11 +2,11 @@
 
 **Understand the vocabulary behind a book.**
 
-LexiSift is a local, offline-first Python CLI for analyzing vocabulary in EPUB books. It follows the EPUB spine, classifies readable sections, tokenizes English text, groups conservative word families, separates common stop words, and reports cumulative reading coverage.
+LexiSift is a local, offline-first Python CLI for analyzing vocabulary in EPUB books. It follows the EPUB spine, classifies readable sections, tokenizes English text, groups conservative word families, separates common stop words, reports cumulative reading coverage, and produces a transparent ranked list of repeated learning candidates.
 
 ## Current version
 
-`0.2.0`
+`0.3.0`
 
 ## Requirements
 
@@ -44,6 +44,12 @@ Choose an output directory:
 lexisift analyze book.epub --scope main -o output/book
 ```
 
+By default, `learning_words.csv` keeps content lemmas that occur at least 3 times. Adjust the threshold when needed:
+
+```bash
+lexisift analyze book.epub --scope main --learning-min-count 5 -o output/book
+```
+
 ## Reports
 
 LexiSift writes:
@@ -55,6 +61,7 @@ output/book/
 ├── vocabulary.csv
 ├── content_words.csv
 ├── lemmas.csv
+├── learning_words.csv
 └── coverage.csv
 ```
 
@@ -89,6 +96,28 @@ strategy <- strategy | strategies
 ```
 
 LexiSift uses LemmInflect's packaged English lexical resources rather than suffix stemming. It prefers correctness over aggressive grouping: automatic dictionary grouping is limited to conservative regular inflections, while irregular forms are folded only through a small curated safe list. Ambiguous homographs such as `left`/`leave` and `saw`/`see` remain separate without contextual POS evidence. Dictionary-ambiguous regular forms remain unchanged unless an independent form in the same book supports one family. Lexical possessives such as `child's` are folded into their base word, while common apostrophe contractions remain intact.
+
+### `learning_words.csv`
+
+A book-local candidate list intended for vocabulary review. It is grouped by lemma, excludes stop words, and by default removes lemmas that occur fewer than 3 times. Columns include:
+
+- `rank`
+- `lemma`
+- `count`
+- `section_count`
+- `section_coverage_percentage`
+- `first_seen_section`
+- `book_percentage`
+- `priority_score`
+- `forms`
+
+The priority score is intentionally simple and auditable:
+
+```text
+count * (1 + section_count / analyzed_sections)
+```
+
+Frequency remains the main signal, while vocabulary that recurs across more of the book receives a modest bonus. This is **not** yet a difficulty score: common words you already know can still rank highly until a personal known-word profile is added.
 
 ### `coverage.csv`
 
@@ -130,8 +159,8 @@ mypy src
 
 Planned later stages include:
 
-- vocabulary progression by section/book
 - known / learning / new vocabulary state
+- vocabulary progression by section/book
 - multi-book SQLite library
 - personalized reading coverage
 - phrase and collocation analysis

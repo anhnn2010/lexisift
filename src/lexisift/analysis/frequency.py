@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 
+from lexisift.analysis.learning import build_learning_stats
 from lexisift.analysis.lemmatizer import build_lemma_map
 from lexisift.analysis.stopwords import is_stopword
 from lexisift.analysis.tokenizer import tokenize
@@ -25,8 +26,12 @@ class AnalysisError(ValueError):
 def analyze_book(
     book: Book,
     scope: AnalysisScope = AnalysisScope.ALL,
+    learning_min_count: int = 3,
 ) -> AnalysisResult:
-    """Analyze raw words, word families, stop words, and cumulative coverage."""
+    """Analyze words, word families, coverage, and learning candidates."""
+
+    if learning_min_count < 1:
+        raise AnalysisError("learning_min_count must be at least 1")
 
     tokenized_sections = [(section, tokenize(section.text)) for section in book.sections]
     section_stats = tuple(
@@ -126,6 +131,12 @@ def analyze_book(
     content_tokens = sum(stat.count for stat in word_stats if not stat.is_stopword)
     unique_content_words = sum(1 for stat in word_stats if not stat.is_stopword)
     unique_content_lemmas = sum(1 for stat in lemma_stats if not stat.is_stopword)
+    analyzed_sections = sum(1 for stat in section_stats if stat.included)
+    learning_stats = build_learning_stats(
+        lemma_stats,
+        analyzed_sections=analyzed_sections,
+        min_count=learning_min_count,
+    )
 
     return AnalysisResult(
         book=book,
@@ -136,8 +147,10 @@ def analyze_book(
         unique_content_words=unique_content_words,
         unique_lemmas=len(lemma_counts),
         unique_content_lemmas=unique_content_lemmas,
+        learning_min_count=learning_min_count,
         section_stats=section_stats,
         word_stats=word_stats,
         lemma_stats=lemma_stats,
         coverage_stats=tuple(coverage_rows),
+        learning_stats=learning_stats,
     )

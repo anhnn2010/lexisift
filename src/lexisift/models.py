@@ -119,6 +119,21 @@ class CoverageStat:
 
 
 @dataclass(frozen=True, slots=True)
+class LearningWordStat:
+    """One book-local vocabulary candidate ranked for repeated exposure."""
+
+    rank: int
+    lemma: str
+    count: int
+    section_count: int
+    section_coverage_percentage: float
+    first_seen_section: int
+    book_percentage: float
+    priority_score: float
+    forms: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class AnalysisResult:
     """Vocabulary analysis result for one book."""
 
@@ -130,7 +145,9 @@ class AnalysisResult:
     unique_content_words: int
     unique_lemmas: int
     unique_content_lemmas: int
+    learning_min_count: int
     section_stats: tuple[SectionStat, ...]
     word_stats: tuple[WordStat, ...]
     lemma_stats: tuple[LemmaStat, ...]
     coverage_stats: tuple[CoverageStat, ...]
+    learning_stats: tuple[LearningWordStat, ...]

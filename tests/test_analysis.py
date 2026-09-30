@@ -126,3 +126,34 @@ def test_coverage_reaches_one_hundred_percent() -> None:
     assert result.coverage_stats[0].lemma == "brain"
     assert result.coverage_stats[0].cumulative_percentage == 2 / 3 * 100
     assert result.coverage_stats[-1].cumulative_percentage == 100.0
+
+
+def test_analysis_builds_learning_candidates_with_configurable_threshold() -> None:
+    book = Book(
+        title="Learning",
+        author=None,
+        source_path="learning.epub",
+        sections=(
+            _section("c1", 1, "One", "brain brain brain memory memory the the"),
+            _section("c2", 2, "Two", "brain memory"),
+        ),
+    )
+
+    result = analyze_book(book, learning_min_count=3)
+
+    assert result.learning_min_count == 3
+    assert [stat.lemma for stat in result.learning_stats] == ["brain", "memory"]
+    assert result.learning_stats[0].rank == 1
+    assert result.learning_stats[0].section_count == 2
+
+
+def test_analysis_rejects_invalid_learning_min_count() -> None:
+    book = Book(
+        title="Learning",
+        author=None,
+        source_path="learning.epub",
+        sections=(_section("c1", 1, "One", "brain"),),
+    )
+
+    with pytest.raises(ValueError, match="learning_min_count"):
+        analyze_book(book, learning_min_count=0)

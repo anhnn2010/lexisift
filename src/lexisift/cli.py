@@ -31,6 +31,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Report directory (default: ./lexisift-output)",
     )
     analyze.add_argument(
+        "--learning-min-count",
+        type=int,
+        default=3,
+        help="Minimum book occurrences for learning_words.csv (default: 3)",
+    )
+    analyze.add_argument(
         "--scope",
         choices=[scope.value for scope in AnalysisScope],
         default=AnalysisScope.ALL.value,
@@ -39,9 +45,18 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_analyze(epub_path: Path, output_dir: Path, scope: AnalysisScope) -> int:
+def _run_analyze(
+    epub_path: Path,
+    output_dir: Path,
+    scope: AnalysisScope,
+    learning_min_count: int,
+) -> int:
     book = load_epub(epub_path)
-    result = analyze_book(book, scope=scope)
+    result = analyze_book(
+        book,
+        scope=scope,
+        learning_min_count=learning_min_count,
+    )
     destination = write_reports(result, output_dir)
 
     author = book.author or "Unknown"
@@ -57,6 +72,10 @@ def _run_analyze(epub_path: Path, output_dir: Path, scope: AnalysisScope) -> int
     print(f"Unique normalized words: {result.unique_words}")
     print(f"Unique lemmas: {result.unique_lemmas}")
     print(f"Unique content lemmas: {result.unique_content_lemmas}")
+    print(
+        f"Learning candidates (count >= {result.learning_min_count}): "
+        f"{len(result.learning_stats)}"
+    )
     print(f"Reports: {destination}")
     return 0
 
@@ -69,7 +88,12 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "analyze":
-            return _run_analyze(args.epub, args.output_dir, AnalysisScope(args.scope))
+            return _run_analyze(
+                args.epub,
+                args.output_dir,
+                AnalysisScope(args.scope),
+                args.learning_min_count,
+            )
     except (EpubError, AnalysisError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
