@@ -92,6 +92,9 @@ class WordStat:
     section_count: int
     first_seen_section: int
     percentage: float
+    capitalized_count: int = 0
+    mid_sentence_capitalized_count: int = 0
+    is_proper_noun: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +108,9 @@ class LemmaStat:
     first_seen_section: int
     percentage: float
     forms: tuple[str, ...]
+    capitalized_count: int = 0
+    mid_sentence_capitalized_count: int = 0
+    is_proper_noun: bool = False
 
 
 @dataclass(frozen=True, slots=True)

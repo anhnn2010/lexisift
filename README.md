@@ -2,11 +2,11 @@
 
 **Understand the vocabulary behind a book.**
 
-LexiSift is a local, offline-first Python CLI for analyzing vocabulary in EPUB books. It follows the EPUB spine, classifies readable sections, tokenizes English text, groups conservative word families, separates common stop words, reports cumulative reading coverage, tracks section-by-section vocabulary progression, ranks repeated learning candidates, and can filter those candidates against a personal known-vocabulary profile.
+LexiSift is a local, offline-first Python CLI for analyzing vocabulary in EPUB books. It follows the EPUB spine, classifies readable sections, tokenizes English text, groups conservative word families, separates common stop words, reports cumulative reading coverage, tracks section-by-section vocabulary progression, detects likely proper nouns from capitalization evidence, ranks repeated learning candidates, and can filter those candidates against a personal known-vocabulary profile.
 
 ## Current version
 
-`0.5.0`
+`0.6.0`
 
 ## Requirements
 
@@ -88,6 +88,7 @@ output/book/
 ├── content_words.csv
 ├── lemmas.csv
 ├── learning_words.csv
+├── proper_nouns.csv
 ├── coverage.csv
 └── progression.csv
 ```
@@ -110,8 +111,11 @@ Every normalized surface form with:
 - `word`
 - `lemma`
 - `is_stopword`
+- `is_proper_noun`
 - `is_known`
 - `count`
+- `capitalized_count`
+- `mid_sentence_capitalized_count`
 - `section_count`
 - `first_seen_section`
 - `percentage`
@@ -120,11 +124,11 @@ Every normalized surface form with:
 
 ### `content_words.csv`
 
-Surface-word statistics with common English stop words removed. It also contains `is_known` when a profile is active.
+Surface-word statistics with common English stop words removed. It retains proper-noun and capitalization audit columns and also contains `is_known` when a profile is active.
 
 ### `lemmas.csv`
 
-Dictionary-form word-family aggregation, including observed forms and known state. For example:
+Dictionary-form word-family aggregation, including observed forms, known state, and proper-noun capitalization evidence. For example:
 
 ```text
 child    <- child | children
@@ -140,11 +144,11 @@ Content lemma families from the current book that match the supplied known-vocab
 
 ### `unknown_words.csv`
 
-Every content lemma family in the current book that is not covered by the supplied known-vocabulary profile, regardless of frequency. This is the complete unknown-vocabulary view before learning-priority filtering.
+Every content lemma family in the current book that is not covered by the supplied known-vocabulary profile, regardless of frequency. This is the complete unknown-vocabulary view before learning-priority filtering. The `is_proper_noun` column makes detected names easy to ignore while updating `known_words.txt`.
 
 ### `learning_words.csv`
 
-A book-local candidate list intended for vocabulary review. It is grouped by lemma, excludes stop words and known lemmas, and by default removes lemmas that occur fewer than 3 times. Columns include:
+A book-local candidate list intended for vocabulary review. It is grouped by lemma, excludes stop words, known lemmas, and likely proper nouns, and by default removes lemmas that occur fewer than 3 times. Columns include:
 
 - `rank`
 - `lemma`
@@ -163,6 +167,11 @@ count * (1 + section_count / analyzed_sections)
 ```
 
 Frequency remains the main signal, while vocabulary that recurs across more of the book receives a modest bonus. This is a book-local learning priority, not a general English difficulty score.
+
+
+### `proper_nouns.csv`
+
+Likely names and other proper nouns detected from book-local capitalization evidence. LexiSift keeps these entries in raw vocabulary and lemma statistics, but removes them from `learning_words.csv`. Detection is deliberately conservative: a lemma must be capitalized in at least 80% of its occurrences and must also appear capitalized away from sentence-initial position. The report includes capitalization counts so detections can be audited.
 
 ### `coverage.csv`
 

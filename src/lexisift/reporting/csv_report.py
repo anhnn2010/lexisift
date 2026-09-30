@@ -24,8 +24,11 @@ def _write_vocabulary_csv(result: AnalysisResult, path: Path) -> None:
                 "word",
                 "lemma",
                 "is_stopword",
+                "is_proper_noun",
                 "is_known",
                 "count",
+                "capitalized_count",
+                "mid_sentence_capitalized_count",
                 "section_count",
                 "first_seen_section",
                 "percentage",
@@ -37,8 +40,11 @@ def _write_vocabulary_csv(result: AnalysisResult, path: Path) -> None:
                     stat.word,
                     stat.lemma,
                     "yes" if stat.is_stopword else "no",
+                    "yes" if stat.is_proper_noun else "no",
                     _known_marker(result, stat.lemma),
                     stat.count,
+                    stat.capitalized_count,
+                    stat.mid_sentence_capitalized_count,
                     stat.section_count,
                     stat.first_seen_section,
                     f"{stat.percentage:.6f}",
@@ -53,8 +59,11 @@ def _write_content_words_csv(result: AnalysisResult, path: Path) -> None:
             [
                 "word",
                 "lemma",
+                "is_proper_noun",
                 "is_known",
                 "count",
+                "capitalized_count",
+                "mid_sentence_capitalized_count",
                 "section_count",
                 "first_seen_section",
                 "percentage",
@@ -67,8 +76,11 @@ def _write_content_words_csv(result: AnalysisResult, path: Path) -> None:
                 [
                     stat.word,
                     stat.lemma,
+                    "yes" if stat.is_proper_noun else "no",
                     _known_marker(result, stat.lemma),
                     stat.count,
+                    stat.capitalized_count,
+                    stat.mid_sentence_capitalized_count,
                     stat.section_count,
                     stat.first_seen_section,
                     f"{stat.percentage:.6f}",
@@ -83,8 +95,11 @@ def _write_lemmas_csv(result: AnalysisResult, path: Path) -> None:
             [
                 "lemma",
                 "is_stopword",
+                "is_proper_noun",
                 "is_known",
                 "count",
+                "capitalized_count",
+                "mid_sentence_capitalized_count",
                 "section_count",
                 "first_seen_section",
                 "percentage",
@@ -96,8 +111,11 @@ def _write_lemmas_csv(result: AnalysisResult, path: Path) -> None:
                 [
                     stat.lemma,
                     "yes" if stat.is_stopword else "no",
+                    "yes" if stat.is_proper_noun else "no",
                     _known_marker(result, stat.lemma),
                     stat.count,
+                    stat.capitalized_count,
+                    stat.mid_sentence_capitalized_count,
                     stat.section_count,
                     stat.first_seen_section,
                     f"{stat.percentage:.6f}",
@@ -153,6 +171,7 @@ def _write_profile_lemmas_csv(
         writer.writerow(
             [
                 "lemma",
+                "is_proper_noun",
                 "count",
                 "section_count",
                 "first_seen_section",
@@ -168,6 +187,7 @@ def _write_profile_lemmas_csv(
             writer.writerow(
                 [
                     stat.lemma,
+                    "yes" if stat.is_proper_noun else "no",
                     stat.count,
                     stat.section_count,
                     stat.first_seen_section,
@@ -175,6 +195,44 @@ def _write_profile_lemmas_csv(
                     " | ".join(stat.forms),
                 ]
             )
+
+
+def _write_proper_nouns_csv(result: AnalysisResult, path: Path) -> None:
+    """Write likely proper nouns with capitalization evidence for auditing."""
+
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(
+            [
+                "lemma",
+                "count",
+                "section_count",
+                "first_seen_section",
+                "capitalized_count",
+                "mid_sentence_capitalized_count",
+                "capitalized_percentage",
+                "forms",
+            ]
+        )
+        for stat in result.lemma_stats:
+            if not stat.is_proper_noun:
+                continue
+            capitalized_percentage = (
+                stat.capitalized_count / stat.count * 100.0 if stat.count else 0.0
+            )
+            writer.writerow(
+                [
+                    stat.lemma,
+                    stat.count,
+                    stat.section_count,
+                    stat.first_seen_section,
+                    stat.capitalized_count,
+                    stat.mid_sentence_capitalized_count,
+                    f"{capitalized_percentage:.2f}",
+                    " | ".join(stat.forms),
+                ]
+            )
+
 
 
 def _write_coverage_csv(result: AnalysisResult, path: Path) -> None:
@@ -303,6 +361,7 @@ def _write_summary(result: AnalysisResult, path: Path) -> None:
         f"Unique content words: {result.unique_content_words}",
         f"Unique lemmas: {result.unique_lemmas}",
         f"Unique content lemmas: {result.unique_content_lemmas}",
+        f"Likely proper-noun lemmas: {sum(1 for stat in result.lemma_stats if stat.is_proper_noun)}",
     ]
 
     if result.known_profile_enabled:
@@ -391,6 +450,7 @@ def write_reports(result: AnalysisResult, output_dir: str | Path) -> Path:
     _write_content_words_csv(result, destination / "content_words.csv")
     _write_lemmas_csv(result, destination / "lemmas.csv")
     _write_learning_words_csv(result, destination / "learning_words.csv")
+    _write_proper_nouns_csv(result, destination / "proper_nouns.csv")
     if result.known_profile_enabled:
         _write_profile_lemmas_csv(
             result, destination / "known_words.csv", known=True

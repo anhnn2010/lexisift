@@ -17,8 +17,8 @@ def build_learning_stats(
     """Return ranked learning candidates from content lemmas.
 
     This is deliberately a book-local heuristic, not a claim about language
-    difficulty. Stop words, known lemmas, and low-frequency lemmas are removed. Remaining
-    lemmas receive a modest bonus for appearing across more analyzed sections,
+    difficulty. Stop words, likely proper nouns, known lemmas, and low-frequency
+    lemmas are removed. Remaining lemmas receive a modest bonus for appearing across more analyzed sections,
     while raw book frequency remains the dominant signal.
     """
 
@@ -29,7 +29,12 @@ def build_learning_stats(
 
     candidates: list[tuple[float, LemmaStat]] = []
     for stat in lemma_stats:
-        if stat.is_stopword or stat.count < min_count or stat.lemma in excluded_lemmas:
+        if (
+            stat.is_stopword
+            or stat.is_proper_noun
+            or stat.count < min_count
+            or stat.lemma in excluded_lemmas
+        ):
             continue
         section_ratio = stat.section_count / analyzed_sections
         priority_score = stat.count * (1.0 + section_ratio)

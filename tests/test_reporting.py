@@ -39,3 +39,31 @@ def test_reports_include_progression_csv(tmp_path: Path) -> None:
     assert "new_unknown_content_lemmas" in progression
     assert "Vocabulary progression:" in summary
     assert "Book-new unknown content lemmas: 2" in summary
+
+
+def test_reports_include_proper_noun_audit_file(tmp_path: Path) -> None:
+    book = Book(
+        title="Names",
+        author=None,
+        source_path="names.epub",
+        sections=(
+            Section(
+                "c1",
+                1,
+                "c1.xhtml",
+                "One",
+                "Tina talks to Katie. Katie talks to Tina. Tina smiles.",
+                SectionKind.CHAPTER,
+            ),
+        ),
+    )
+    result = analyze_book(book, learning_min_count=1)
+
+    destination = write_reports(result, tmp_path / "out")
+    proper_nouns = (destination / "proper_nouns.csv").read_text(encoding="utf-8")
+    learning = (destination / "learning_words.csv").read_text(encoding="utf-8")
+
+    assert "tina" in proper_nouns
+    assert "katie" in proper_nouns
+    assert "tina" not in learning
+    assert "katie" not in learning

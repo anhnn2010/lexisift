@@ -81,6 +81,8 @@ def _run_analyze(
     print(f"Unique normalized words: {result.unique_words}")
     print(f"Unique lemmas: {result.unique_lemmas}")
     print(f"Unique content lemmas: {result.unique_content_lemmas}")
+    proper_nouns = sum(1 for stat in result.lemma_stats if stat.is_proper_noun)
+    print(f"Likely proper-noun lemmas: {proper_nouns}")
     if result.known_profile_enabled:
         known_content_lemmas = sum(
             1

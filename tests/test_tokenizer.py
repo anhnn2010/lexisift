@@ -44,3 +44,15 @@ def test_tokenize_splits_stylistic_long_hyphen_chains() -> None:
 
 def test_tokenize_casefolds_unicode_words() -> None:
     assert tokenize("CAFÉ café") == ("café", "café")
+
+
+def test_observe_tokens_preserves_capitalization_and_sentence_position() -> None:
+    from lexisift.analysis.tokenizer import observe_tokens
+
+    observations = observe_tokens('Tina talks to Katie. Brain grows. The brain adapts.')
+    by_surface = [(item.surface, item.word, item.sentence_initial) for item in observations]
+
+    assert by_surface[0] == ("Tina", "tina", True)
+    assert ("Katie", "katie", False) in by_surface
+    brain_rows = [row for row in by_surface if row[1] == "brain"]
+    assert brain_rows == [("Brain", "brain", True), ("brain", "brain", False)]

@@ -9,8 +9,9 @@ from lexisift.analysis.known_words import resolve_known_lemmas
 from lexisift.analysis.learning import build_learning_stats
 from lexisift.analysis.lemmatizer import build_lemma_map
 from lexisift.analysis.progression import build_progression_stats
+from lexisift.analysis.proper_nouns import is_likely_proper_noun
 from lexisift.analysis.stopwords import is_stopword
-from lexisift.analysis.tokenizer import tokenize
+from lexisift.analysis.tokenizer import observe_tokens
 from lexisift.models import (
     AnalysisResult,
     AnalysisScope,
@@ -37,7 +38,11 @@ def analyze_book(
     if learning_min_count < 1:
         raise AnalysisError("learning_min_count must be at least 1")
 
-    tokenized_sections = [(section, tokenize(section.text)) for section in book.sections]
+    observed_sections = [(section, observe_tokens(section.text)) for section in book.sections]
+    tokenized_sections = [
+        (section, tuple(observation.word for observation in observations))
+        for section, observations in observed_sections
+    ]
     section_stats = tuple(
         SectionStat(
             section_id=section.section_id,
@@ -59,11 +64,22 @@ def analyze_book(
         raise AnalysisError(f"No sections are available for analysis scope: {scope.value}")
 
     counts: Counter[str] = Counter()
+    capitalized_counts: Counter[str] = Counter()
+    mid_sentence_capitalized_counts: Counter[str] = Counter()
     section_ids_by_word: defaultdict[str, set[str]] = defaultdict(set)
     first_seen_by_word: dict[str, int] = {}
 
-    for section, tokens in included:
+    included_section_ids = {section.section_id for section, _tokens in included}
+    for section, observations in observed_sections:
+        if section.section_id not in included_section_ids:
+            continue
+        tokens = tuple(observation.word for observation in observations)
         counts.update(tokens)
+        for observation in observations:
+            if observation.is_capitalized:
+                capitalized_counts[observation.word] += 1
+                if not observation.sentence_initial:
+                    mid_sentence_capitalized_counts[observation.word] += 1
         for word in set(tokens):
             section_ids_by_word[word].add(section.section_id)
             first_seen_by_word.setdefault(word, section.order)
@@ -81,6 +97,16 @@ def analyze_book(
             section_count=len(section_ids_by_word[word]),
             first_seen_section=first_seen_by_word[word],
             percentage=(count / total_tokens * 100.0) if total_tokens else 0.0,
+            capitalized_count=capitalized_counts[word],
+            mid_sentence_capitalized_count=mid_sentence_capitalized_counts[word],
+            is_proper_noun=(
+                not (is_stopword(word) or is_stopword(lemma_by_word[word]))
+                and is_likely_proper_noun(
+                    total_count=count,
+                    capitalized_count=capitalized_counts[word],
+                    mid_sentence_capitalized_count=mid_sentence_capitalized_counts[word],
+                )
+            ),
         )
         for word, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     )
@@ -89,6 +115,13 @@ def analyze_book(
     section_ids_by_lemma: defaultdict[str, set[str]] = defaultdict(set)
     first_seen_by_lemma: dict[str, int] = {}
     forms_by_lemma: defaultdict[str, set[str]] = defaultdict(set)
+    capitalized_counts_by_lemma: Counter[str] = Counter()
+    mid_sentence_capitalized_counts_by_lemma: Counter[str] = Counter()
+
+    for word, count in counts.items():
+        lemma = lemma_by_word[word]
+        capitalized_counts_by_lemma[lemma] += capitalized_counts[word]
+        mid_sentence_capitalized_counts_by_lemma[lemma] += mid_sentence_capitalized_counts[word]
 
     for section, tokens in included:
         section_lemmas: set[str] = set()
@@ -111,6 +144,16 @@ def analyze_book(
             percentage=(count / total_tokens * 100.0) if total_tokens else 0.0,
             forms=tuple(
                 sorted(forms_by_lemma[lemma], key=lambda form: (-counts[form], form))
+            ),
+            capitalized_count=capitalized_counts_by_lemma[lemma],
+            mid_sentence_capitalized_count=mid_sentence_capitalized_counts_by_lemma[lemma],
+            is_proper_noun=(
+                not is_stopword(lemma)
+                and is_likely_proper_noun(
+                    total_count=count,
+                    capitalized_count=capitalized_counts_by_lemma[lemma],
+                    mid_sentence_capitalized_count=mid_sentence_capitalized_counts_by_lemma[lemma],
+                )
             ),
         )
         for lemma, count in sorted(lemma_counts.items(), key=lambda item: (-item[1], item[0]))

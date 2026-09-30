@@ -241,3 +241,47 @@ def test_progression_tracks_profile_unknown_vocabulary() -> None:
     assert second.unknown_content_lemmas == 2
     assert second.new_unknown_content_lemmas == 1
     assert second.cumulative_unknown_content_lemmas == 2
+
+
+def test_proper_nouns_are_kept_in_raw_stats_but_removed_from_learning_candidates() -> None:
+    book = Book(
+        title="Names",
+        author=None,
+        source_path="names.epub",
+        sections=(
+            _section(
+                "c1",
+                1,
+                "One",
+                "Tina helps children. The children talk to Tina. Tina knows Katie. "
+                "Katie listens to Tina. Brain grows. The brain changes. brain brain.",
+            ),
+        ),
+    )
+
+    result = analyze_book(book, learning_min_count=2)
+    by_lemma = {stat.lemma: stat for stat in result.lemma_stats}
+    candidates = {stat.lemma for stat in result.learning_stats}
+
+    assert by_lemma["tina"].is_proper_noun
+    assert by_lemma["katie"].is_proper_noun
+    assert not by_lemma["brain"].is_proper_noun
+    assert "tina" not in candidates
+    assert "katie" not in candidates
+    assert "brain" in candidates
+
+
+def test_capitalized_stopwords_are_not_marked_as_proper_nouns() -> None:
+    book = Book(
+        title="Pronoun",
+        author=None,
+        source_path="pronoun.epub",
+        sections=(_section("c1", 1, "One", "I think I know. Tina knows me."),),
+    )
+
+    result = analyze_book(book, learning_min_count=1)
+    by_lemma = {stat.lemma: stat for stat in result.lemma_stats}
+
+    assert by_lemma["i"].is_stopword
+    assert not by_lemma["i"].is_proper_noun
+    assert by_lemma["tina"].is_proper_noun is False  # only one occurrence: conservative

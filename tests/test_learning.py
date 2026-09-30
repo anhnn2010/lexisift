@@ -63,3 +63,23 @@ def test_learning_candidates_exclude_known_lemmas() -> None:
     )
 
     assert [stat.lemma for stat in result] == ["memory"]
+
+
+def test_learning_candidates_exclude_proper_nouns() -> None:
+    stats = (
+        LemmaStat(
+            lemma="tina",
+            is_stopword=False,
+            count=10,
+            section_count=4,
+            first_seen_section=1,
+            percentage=10.0,
+            forms=("tina",),
+            is_proper_noun=True,
+        ),
+        _lemma("brain", 8, 4),
+    )
+
+    result = build_learning_stats(stats, analyzed_sections=4, min_count=1)
+
+    assert [stat.lemma for stat in result] == ["brain"]
