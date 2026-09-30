@@ -2,11 +2,11 @@
 
 **Understand the vocabulary behind a book.**
 
-LexiSift is a local, offline-first Python CLI for analyzing vocabulary in EPUB books. It follows the EPUB spine, classifies readable sections, tokenizes English text, groups conservative word families, separates common stop words, reports cumulative reading coverage, ranks repeated learning candidates, and can filter those candidates against a personal known-vocabulary profile.
+LexiSift is a local, offline-first Python CLI for analyzing vocabulary in EPUB books. It follows the EPUB spine, classifies readable sections, tokenizes English text, groups conservative word families, separates common stop words, reports cumulative reading coverage, tracks section-by-section vocabulary progression, ranks repeated learning candidates, and can filter those candidates against a personal known-vocabulary profile.
 
 ## Current version
 
-`0.4.0`
+`0.5.0`
 
 ## Requirements
 
@@ -88,7 +88,8 @@ output/book/
 ├── content_words.csv
 ├── lemmas.csv
 ├── learning_words.csv
-└── coverage.csv
+├── coverage.csv
+└── progression.csv
 ```
 
 When `--known-words` is provided, it also writes:
@@ -167,6 +168,18 @@ Frequency remains the main signal, while vocabulary that recurs across more of t
 
 Lemmas ranked by frequency with cumulative token coverage. This answers questions such as how much of the running text is covered by the 100, 500, 1000, or 2000 most frequent lemmas in the book.
 
+
+### `progression.csv`
+
+Section-by-section vocabulary growth in EPUB reading order. It distinguishes vocabulary that is new in the current book from vocabulary already encountered in earlier analyzed sections. Key columns include:
+
+- `new_content_lemmas`: content lemmas first encountered in this section
+- `repeated_content_lemmas`: content lemmas already seen in earlier analyzed sections
+- `content_reuse_percentage`: share of this section's unique content lemmas already encountered earlier
+- `cumulative_content_lemmas`: total distinct content lemmas encountered up through this section
+
+When a known-vocabulary profile is active, the report also includes `unknown_content_lemmas`, `new_unknown_content_lemmas`, and `cumulative_unknown_content_lemmas`. This keeps two ideas separate: a word can be new in the book but already known to the reader, or familiar from an earlier section while still unknown to the reader.
+
 ### Known-vocabulary coverage in `summary.txt`
 
 When a profile is active, the summary adds:
@@ -216,7 +229,7 @@ mypy src
 Planned later stages include:
 
 - persistent known / learning / new vocabulary state
-- vocabulary progression by section/book
+- multi-book vocabulary progression
 - multi-book SQLite library
 - personalized reading coverage across books
 - phrase and collocation analysis

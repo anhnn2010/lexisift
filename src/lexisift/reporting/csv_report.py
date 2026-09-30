@@ -195,6 +195,60 @@ def _write_coverage_csv(result: AnalysisResult, path: Path) -> None:
             )
 
 
+def _write_progression_csv(result: AnalysisResult, path: Path) -> None:
+    """Write section-by-section vocabulary growth and reuse metrics."""
+
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(
+            [
+                "order",
+                "section_id",
+                "type",
+                "title",
+                "token_count",
+                "content_token_count",
+                "unique_lemmas",
+                "content_lemmas",
+                "new_lemmas",
+                "new_content_lemmas",
+                "repeated_content_lemmas",
+                "content_reuse_percentage",
+                "cumulative_lemmas",
+                "cumulative_content_lemmas",
+                "unknown_content_lemmas",
+                "new_unknown_content_lemmas",
+                "cumulative_unknown_content_lemmas",
+            ]
+        )
+        for stat in result.progression_stats:
+            writer.writerow(
+                [
+                    stat.order,
+                    stat.section_id,
+                    stat.kind.value,
+                    stat.title,
+                    stat.token_count,
+                    stat.content_token_count,
+                    stat.unique_lemmas,
+                    stat.content_lemmas,
+                    stat.new_lemmas,
+                    stat.new_content_lemmas,
+                    stat.repeated_content_lemmas,
+                    f"{stat.content_reuse_percentage:.2f}",
+                    stat.cumulative_lemmas,
+                    stat.cumulative_content_lemmas,
+                    "" if stat.unknown_content_lemmas is None else stat.unknown_content_lemmas,
+                    ""
+                    if stat.new_unknown_content_lemmas is None
+                    else stat.new_unknown_content_lemmas,
+                    ""
+                    if stat.cumulative_unknown_content_lemmas is None
+                    else stat.cumulative_unknown_content_lemmas,
+                ]
+            )
+
+
 def _write_sections_csv(result: AnalysisResult, path: Path) -> None:
     stats_by_id = {stat.section_id: stat for stat in result.section_stats}
     with path.open("w", encoding="utf-8", newline="") as stream:
@@ -296,6 +350,24 @@ def _write_summary(result: AnalysisResult, path: Path) -> None:
         if coverage is not None:
             lines.append(f"Top {rank:>4} lemmas: {coverage:>6.2f}%")
 
+    if result.progression_stats:
+        first_progress = result.progression_stats[0]
+        last_progress = result.progression_stats[-1]
+        lines.extend(
+            [
+                "",
+                "Vocabulary progression:",
+                f"First analyzed section new content lemmas: {first_progress.new_content_lemmas}",
+                f"Last analyzed section new content lemmas: {last_progress.new_content_lemmas}",
+                f"Final cumulative content lemmas: {last_progress.cumulative_content_lemmas}",
+            ]
+        )
+        if result.known_profile_enabled:
+            new_unknown = sum(
+                stat.new_unknown_content_lemmas or 0 for stat in result.progression_stats
+            )
+            lines.append(f"Book-new unknown content lemmas: {new_unknown}")
+
     lines.extend(["", "Top 20 content lemmas:"])
     content_lemmas = [stat for stat in result.lemma_stats if not stat.is_stopword]
     for index, stat in enumerate(content_lemmas[:20], start=1):
@@ -330,6 +402,7 @@ def write_reports(result: AnalysisResult, output_dir: str | Path) -> Path:
         (destination / "known_words.csv").unlink(missing_ok=True)
         (destination / "unknown_words.csv").unlink(missing_ok=True)
     _write_coverage_csv(result, destination / "coverage.csv")
+    _write_progression_csv(result, destination / "progression.csv")
     _write_sections_csv(result, destination / "sections.csv")
     _write_summary(result, destination / "summary.txt")
     return destination

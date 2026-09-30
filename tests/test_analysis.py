@@ -185,3 +185,59 @@ def test_known_profile_filters_learning_candidates_and_tracks_coverage() -> None
     assert result.known_lemmas == frozenset({"child", "brain"})
     assert result.known_content_tokens == 5
     assert [stat.lemma for stat in result.learning_stats] == ["memory"]
+
+
+def test_progression_tracks_new_repeated_and_cumulative_content_lemmas() -> None:
+    book = Book(
+        title="Progression",
+        author=None,
+        source_path="progression.epub",
+        sections=(
+            _section("c1", 1, "One", "brain child the"),
+            _section("c2", 2, "Two", "brain child memory"),
+            _section("c3", 3, "Three", "memory future"),
+        ),
+    )
+
+    result = analyze_book(book)
+    first, second, third = result.progression_stats
+
+    assert first.content_lemmas == 2
+    assert first.new_content_lemmas == 2
+    assert first.repeated_content_lemmas == 0
+    assert first.cumulative_content_lemmas == 2
+    assert first.content_reuse_percentage == 0.0
+
+    assert second.content_lemmas == 3
+    assert second.new_content_lemmas == 1
+    assert second.repeated_content_lemmas == 2
+    assert second.cumulative_content_lemmas == 3
+    assert second.content_reuse_percentage == pytest.approx(2 / 3 * 100)
+
+    assert third.content_lemmas == 2
+    assert third.new_content_lemmas == 1
+    assert third.repeated_content_lemmas == 1
+    assert third.cumulative_content_lemmas == 4
+    assert third.content_reuse_percentage == 50.0
+
+
+def test_progression_tracks_profile_unknown_vocabulary() -> None:
+    book = Book(
+        title="Progression",
+        author=None,
+        source_path="progression.epub",
+        sections=(
+            _section("c1", 1, "One", "brain child"),
+            _section("c2", 2, "Two", "brain child memory"),
+        ),
+    )
+
+    result = analyze_book(book, known_words={"brain"})
+    first, second = result.progression_stats
+
+    assert first.unknown_content_lemmas == 1
+    assert first.new_unknown_content_lemmas == 1
+    assert first.cumulative_unknown_content_lemmas == 1
+    assert second.unknown_content_lemmas == 2
+    assert second.new_unknown_content_lemmas == 1
+    assert second.cumulative_unknown_content_lemmas == 2

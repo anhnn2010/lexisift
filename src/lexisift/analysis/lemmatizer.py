@@ -12,6 +12,16 @@ from lexisift.analysis.stopwords import is_stopword
 # LexiSift only groups an irregular surface when the relationship is safe without
 # contextual POS tagging. Ambiguous homographs such as ``left``/``leave`` are
 # intentionally absent and therefore remain separate vocabulary items.
+# Surface forms whose dictionary analysis can vary across LemmInflect resource
+# versions and whose meanings map to genuinely different lemmas. Without
+# token-level POS/context, preserve them exactly rather than letting a regular
+# spelling relation choose one sense.
+_AMBIGUOUS_SURFACES: frozenset[str] = frozenset({
+    "leaves",  # plural leaf / verb leave
+    "lives",   # plural life / verb live
+})
+
+
 _IRREGULAR_LEMMAS: dict[str, str] = {
     "best": "good",
     "better": "good",
@@ -55,11 +65,20 @@ def _strip_lexical_possessive(word: str) -> str:
 
 
 def _candidate_set(word: str) -> frozenset[str]:
-    """Return all dictionary lemmas for a surface form."""
+    """Return the preferred dictionary lemma for each POS reading.
+
+    LemmInflect can return multiple ordered lemma candidates for one POS. For
+    example, ``developed`` may produce ``("develop", "develope")`` for
+    VERB. Treating every fallback spelling as an equally plausible lemma creates
+    false ambiguity. LexiSift therefore keeps only the first (preferred) lemma
+    per POS while still preserving genuine cross-POS ambiguity such as
+    ``leaves`` -> NOUN ``leaf`` / VERB ``leave``.
+    """
 
     candidates: set[str] = set()
     for spellings in _dictionary_lemmas(word).values():
-        candidates.update(spellings)
+        if spellings:
+            candidates.add(spellings[0])
     return frozenset(candidates)
 
 
@@ -140,39 +159,101 @@ def _eligible_regular_candidates(word: str, candidates: frozenset[str]) -> froze
     )
 
 
-def _support_counts(
-    bases: Mapping[str, str],
-    candidates_by_word: Mapping[str, frozenset[str]],
-) -> Counter[str]:
-    """Count independent high-confidence evidence for lemma candidates.
+def _build_spelling_candidates(
+    words: Collection[str],
+    dictionary_candidates_by_word: Mapping[str, frozenset[str]],
+) -> dict[str, frozenset[str]]:
+    """Return regular-inflection candidates supported by book and dictionary data.
 
-    Only an unambiguous *regular* inflection or a curated safe irregular votes.
-    Merely seeing a dictionary relation such as ``left -> leave`` contributes no
-    evidence because that transformation is neither regular nor explicitly safe.
+    The index is derived from vocabulary items already present in the book rather
+    than from LemmInflect's analysis of the inflected surface. This makes regular
+    family grouping stable across lexical-resource quirks. For example, even if
+    a dictionary lists ``developed`` only as an adjective lemma, the simultaneous
+    presence of ``develop`` and ``develops`` still provides spelling evidence for
+    the ``develop`` family.
+    """
+
+    vocabulary = set(words)
+    reverse: dict[str, set[str]] = {word: set() for word in vocabulary}
+
+    # First derive relations from base-looking vocabulary items that actually
+    # occur in the book. This path is intentionally independent of how a
+    # particular LemmInflect resource classifies the inflected surface.
+    for lemma in vocabulary:
+        for form in _regular_inflections(lemma):
+            if form in vocabulary and form != lemma:
+                reverse[form].add(lemma)
+
+    # Also accept dictionary lemmas that have a direct regular spelling relation
+    # even when the base form itself is absent from the book (runs + running ->
+    # run). Selection still requires corroboration for lexicalized/ambiguous
+    # surfaces, so this does not reintroduce blind stemming.
+    for word in vocabulary:
+        for lemma in dictionary_candidates_by_word[word]:
+            if lemma != word and _is_regular_inflection(word, lemma):
+                reverse[word].add(lemma)
+
+    return {word: frozenset(lemmas) for word, lemmas in reverse.items()}
+
+
+def _dictionary_is_ambiguous(
+    word: str,
+    dictionary_candidates: frozenset[str],
+    spelling_candidates: frozenset[str],
+) -> bool:
+    """Return whether dictionary evidence exposes competing non-self lemmas.
+
+    A surface such as ``leaves`` can mean a form of either ``leaf`` or ``leave``.
+    Even if only one of those base lemmas happens to occur elsewhere in the book,
+    LexiSift must not force every occurrence into that family without token-level
+    POS/context.
+    """
+
+    nonself = {lemma for lemma in dictionary_candidates if lemma != word}
+    if len(nonself) > 1:
+        return True
+    if nonself and spelling_candidates and not nonself.issubset(spelling_candidates):
+        return True
+    return False
+
+
+def _support_counts(
+    words: Collection[str],
+    spelling_candidates_by_word: Mapping[str, frozenset[str]],
+    dictionary_candidates_by_word: Mapping[str, frozenset[str]],
+) -> Counter[str]:
+    """Count independent high-confidence spelling evidence for lemma families.
+
+    Regular spelling relations are derived from base lemmas that actually occur
+    in the book. A surface contributes one vote only when it points to exactly one
+    base and the morphology dictionary does not expose a competing lemma. This
+    lets ``developed`` + ``develops`` corroborate ``develop`` even when a specific
+    LemmInflect build lexicalizes ``developed`` as an adjective, while ambiguous
+    forms such as ``leaves`` do not vote for either ``leaf`` or ``leave``.
     """
 
     support: Counter[str] = Counter()
-    for word, base in bases.items():
+    for word in words:
         if word in _IRREGULAR_LEMMAS:
             support[_IRREGULAR_LEMMAS[word]] += 1
             continue
 
-        candidates = candidates_by_word[word]
-        eligible = _eligible_regular_candidates(base, candidates)
-        # A form that is itself a dictionary lemma is ambiguous and must not
-        # vote for one of its own alternate readings (evening -> even).
-        if base not in candidates and len(candidates) == 1 and len(eligible) == 1:
-            support[next(iter(eligible))] += 1
+        spelling = spelling_candidates_by_word[word]
+        dictionary = dictionary_candidates_by_word[word]
+        if len(spelling) != 1 or _dictionary_is_ambiguous(word, dictionary, spelling):
+            continue
+        support[next(iter(spelling))] += 1
     return support
 
 
 def _select_lemma(
     word: str,
     base: str,
-    candidates: frozenset[str],
+    dictionary_candidates: frozenset[str],
+    spelling_candidates: frozenset[str],
     support: Counter[str],
 ) -> str:
-    """Select a high-confidence dictionary lemma for one surface word."""
+    """Select a high-confidence lemma for one surface word."""
 
     if "'" in word and is_stopword(word):
         return word
@@ -180,38 +261,35 @@ def _select_lemma(
     if word in _IRREGULAR_LEMMAS:
         return _IRREGULAR_LEMMAS[word]
 
+    if word in _AMBIGUOUS_SURFACES:
+        return base
+
     # Lexical possessives are safe independently of morphology/POS.
     if base != word:
         return _IRREGULAR_LEMMAS.get(base, base)
 
-    if not candidates:
+    if not spelling_candidates:
         return base
 
-    eligible = _eligible_regular_candidates(base, candidates)
-    if not eligible:
+    if _dictionary_is_ambiguous(word, dictionary_candidates, spelling_candidates):
         return base
 
-    # If the surface itself is also a dictionary lemma (e.g. evening), only map
-    # it when another independent inflected form in this book supports exactly
-    # one candidate. This favors false negatives over false family merges.
-    if base in candidates:
-        supported = [lemma for lemma in eligible if support[lemma] >= 1]
-        if len(supported) != 1:
-            return base
-        lemma = supported[0]
-    elif len(candidates) == 1 and len(eligible) == 1:
-        lemma = next(iter(eligible))
-    else:
-        # If a non-lemma surface has multiple distinct dictionary analyses
-        # (e.g. leaves -> leaf/leave, lives -> life/live), token-level POS is
-        # required to choose safely. Keep the surface form instead of forcing
-        # the whole book into one family.
+    if len(spelling_candidates) != 1:
+        return base
+    lemma = next(iter(spelling_candidates))
+
+    # If the surface is itself lexicalized as a dictionary lemma (for example
+    # ``evening``), require another independent regular surface from this book to
+    # corroborate the family. The current surface contributes one support vote,
+    # so >=2 means at least one sibling exists. This rule is intentionally based
+    # on spelling evidence, not on whether a particular LemmInflect build also
+    # returns the base lemma for this exact surface.
+    if base in dictionary_candidates and support[lemma] < 2:
         return base
 
     if not is_stopword(word) and is_stopword(lemma):
         return base
     return lemma
-
 
 def lemmatize_word(word: str, vocabulary: Collection[str] | None = None) -> str:
     """Return a conservative dictionary lemma for one normalized token.
@@ -232,13 +310,9 @@ def lemmatize_word(word: str, vocabulary: Collection[str] | None = None) -> str:
     if base != word:
         return _IRREGULAR_LEMMAS.get(base, base)
 
-    candidates = _candidate_set(base)
-    eligible = _eligible_regular_candidates(base, candidates)
-    if base not in candidates and len(candidates) == 1 and len(eligible) == 1:
-        lemma = next(iter(eligible))
-        if not is_stopword(word) and is_stopword(lemma):
-            return base
-        return lemma
+    # Without book context there is no reverse vocabulary index, so keep regular
+    # forms unchanged rather than guessing from a single surface token. Safe
+    # irregulars and possessives above are still resolved.
     return base
 
 
@@ -247,15 +321,28 @@ def build_lemma_map(vocabulary: Collection[str]) -> dict[str, str]:
 
     words = tuple(sorted(set(vocabulary)))
     bases = {word: _base_for_lookup(word) for word in words}
-    candidates_by_word = {
+    dictionary_candidates_by_word = {
         word: frozenset({bases[word]})
         if "'" in word and is_stopword(word)
         else _candidate_set(bases[word])
         for word in words
     }
-    support = _support_counts(bases, candidates_by_word)
+    spelling_candidates_by_word = _build_spelling_candidates(
+        words, dictionary_candidates_by_word
+    )
+    support = _support_counts(
+        words,
+        spelling_candidates_by_word,
+        dictionary_candidates_by_word,
+    )
 
     return {
-        word: _select_lemma(word, bases[word], candidates_by_word[word], support)
+        word: _select_lemma(
+            word,
+            bases[word],
+            dictionary_candidates_by_word[word],
+            spelling_candidates_by_word[word],
+            support,
+        )
         for word in words
     }

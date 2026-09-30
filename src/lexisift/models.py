@@ -134,6 +134,29 @@ class LearningWordStat:
 
 
 @dataclass(frozen=True, slots=True)
+class SectionProgressStat:
+    """Vocabulary growth and reuse metrics for one analyzed section."""
+
+    section_id: str
+    order: int
+    title: str
+    kind: SectionKind
+    token_count: int
+    content_token_count: int
+    unique_lemmas: int
+    content_lemmas: int
+    new_lemmas: int
+    new_content_lemmas: int
+    repeated_content_lemmas: int
+    content_reuse_percentage: float
+    cumulative_lemmas: int
+    cumulative_content_lemmas: int
+    unknown_content_lemmas: int | None
+    new_unknown_content_lemmas: int | None
+    cumulative_unknown_content_lemmas: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class AnalysisResult:
     """Vocabulary analysis result for one book."""
 
@@ -155,3 +178,4 @@ class AnalysisResult:
     lemma_stats: tuple[LemmaStat, ...]
     coverage_stats: tuple[CoverageStat, ...]
     learning_stats: tuple[LearningWordStat, ...]
+    progression_stats: tuple[SectionProgressStat, ...]

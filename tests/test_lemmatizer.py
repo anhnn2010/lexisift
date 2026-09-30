@@ -24,8 +24,10 @@ def _fake_lookup(word: str) -> dict[str, tuple[str, ...]]:
         "thinks": {"VERB": ("think",)},
         "thinking": {"NOUN": ("thinking",), "VERB": ("think",)},
         "develop": {"VERB": ("develop",)},
-        "develops": {"VERB": ("develop",)},
-        "developed": {"ADJ": ("developed",), "VERB": ("develop",)},
+        "develops": {"NOUN": ("develops",), "VERB": ("develop",)},
+        # Mirrors real LemmInflect output observed on the user's machine: the
+        # preferred VERB lemma is ``develop`` with a lower-priority fallback.
+        "developed": {"VERB": ("develop", "develope")},
         "leave": {"VERB": ("leave",)},
         "leaving": {"VERB": ("leave",)},
         "leaves": {"NOUN": ("leaf",), "VERB": ("leave",)},
@@ -105,4 +107,51 @@ def test_lemmatizer_keeps_multi_lemma_surface_unchanged_without_pos() -> None:
     with patch("lexisift.analysis.lemmatizer._dictionary_lemmas", side_effect=_fake_lookup):
         mapping = build_lemma_map({"live", "lives"})
 
+    assert mapping["lives"] == "lives"
+
+
+def test_lemma_map_regular_family_survives_self_only_dictionary_entries() -> None:
+    def self_lexicalizing_lookup(word: str) -> dict[str, tuple[str, ...]]:
+        data = {
+            "develop": {"VERB": ("develop",)},
+            "develops": {"NOUN": ("develops",)},
+            "developed": {"ADJ": ("developed",)},
+            "even": {"ADJ": ("even",)},
+            "evening": {"NOUN": ("evening",)},
+        }
+        return data.get(word, {})
+
+    with patch(
+        "lexisift.analysis.lemmatizer._dictionary_lemmas",
+        side_effect=self_lexicalizing_lookup,
+    ):
+        mapping = build_lemma_map(
+            {"develop", "develops", "developed", "even", "evening"}
+        )
+
+    assert mapping["develops"] == "develop"
+    assert mapping["developed"] == "develop"
+    assert mapping["evening"] == "evening"
+
+
+def test_ambiguous_surface_guard_survives_incomplete_dictionary_analysis() -> None:
+    def incomplete_lookup(word: str) -> dict[str, tuple[str, ...]]:
+        data = {
+            "leave": {"VERB": ("leave",)},
+            "leaving": {"VERB": ("leave",)},
+            # Some resource builds may expose only the verbal reading here.
+            "leaves": {"VERB": ("leave",)},
+            "live": {"VERB": ("live",)},
+            "lives": {"VERB": ("live",)},
+        }
+        return data.get(word, {})
+
+    with patch(
+        "lexisift.analysis.lemmatizer._dictionary_lemmas",
+        side_effect=incomplete_lookup,
+    ):
+        mapping = build_lemma_map({"leave", "leaving", "leaves", "live", "lives"})
+
+    assert mapping["leaving"] == "leave"
+    assert mapping["leaves"] == "leaves"
     assert mapping["lives"] == "lives"

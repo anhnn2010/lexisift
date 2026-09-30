@@ -8,6 +8,7 @@ from collections.abc import Collection
 from lexisift.analysis.known_words import resolve_known_lemmas
 from lexisift.analysis.learning import build_learning_stats
 from lexisift.analysis.lemmatizer import build_lemma_map
+from lexisift.analysis.progression import build_progression_stats
 from lexisift.analysis.stopwords import is_stopword
 from lexisift.analysis.tokenizer import tokenize
 from lexisift.models import (
@@ -143,6 +144,12 @@ def analyze_book(
         for stat in lemma_stats
         if not stat.is_stopword and stat.lemma in known_lemmas
     )
+    progression_stats = build_progression_stats(
+        included,
+        lemma_by_word,
+        known_lemmas=known_lemmas,
+        known_profile_enabled=known_profile_enabled,
+    )
     learning_stats = build_learning_stats(
         lemma_stats,
         analyzed_sections=analyzed_sections,
@@ -169,4 +176,5 @@ def analyze_book(
         lemma_stats=lemma_stats,
         coverage_stats=tuple(coverage_rows),
         learning_stats=learning_stats,
+        progression_stats=progression_stats,
     )

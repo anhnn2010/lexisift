@@ -4,6 +4,8 @@ import pytest
 
 pytest.importorskip("lemminflect")
 
+from lemminflect import getAllLemmas
+
 from lexisift.analysis.lemmatizer import build_lemma_map
 
 
@@ -22,8 +24,14 @@ def test_real_lemminflect_avoids_observed_false_merges() -> None:
 
     assert mapping["evening"] == "evening"
     assert mapping["thinking"] == "think"
-    assert mapping["developed"] == "develop"
+    assert mapping["developed"] == "develop", (
+        "LemmInflect diagnostics: "
+        f"develop={getAllLemmas('develop')!r}, "
+        f"develops={getAllLemmas('develops')!r}, "
+        f"developed={getAllLemmas('developed')!r}"
+    )
     assert mapping["playing"] == "play"
+    assert mapping["leaves"] == "leaves"
     assert mapping["left"] == "left"
     assert mapping["saw"] == "saw"
     assert mapping["gone"] == "go"
