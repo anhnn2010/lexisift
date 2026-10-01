@@ -285,3 +285,27 @@ def test_capitalized_stopwords_are_not_marked_as_proper_nouns() -> None:
     assert by_lemma["i"].is_stopword
     assert not by_lemma["i"].is_proper_noun
     assert by_lemma["tina"].is_proper_noun is False  # only one occurrence: conservative
+
+
+def test_dialogue_initial_common_word_is_not_filtered_as_proper_noun() -> None:
+    book = Book(
+        title="Dialogue",
+        author=None,
+        source_path="dialogue.epub",
+        sections=(
+            _section(
+                "c1",
+                1,
+                "One",
+                'I called Tina. "Please listen," Tina said. '
+                'I called Katie. "Please stay," Katie replied.',
+            ),
+        ),
+    )
+
+    result = analyze_book(book, learning_min_count=2)
+    by_lemma = {stat.lemma: stat for stat in result.lemma_stats}
+
+    assert by_lemma["tina"].is_proper_noun
+    assert by_lemma["katie"].is_proper_noun
+    assert not by_lemma["please"].is_proper_noun

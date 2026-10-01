@@ -22,8 +22,8 @@ _TRANSLATION = str.maketrans(
         "―": " ",
     }
 )
-_SENTENCE_END = frozenset(".!?")
-_QUOTE_OR_BRACKET = frozenset("\"'“”‘’([{<")
+_SENTENCE_END = frozenset(".!?:")
+_OPENING_BOUNDARY = frozenset("\"'“‘([{<")
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,14 +57,24 @@ def _split_long_hyphen_chain(token: str) -> tuple[str, ...]:
 
 
 def _is_sentence_initial(text: str, start: int) -> bool:
-    """Return whether a token starts the text or follows sentence-ending punctuation."""
+    """Return whether a token starts a sentence-like text boundary.
+
+    Besides normal sentence punctuation, block boundaries and opening quotation
+    marks count as boundaries. This is intentionally conservative for proper-noun
+    detection: quoted dialogue and headings should not create false evidence that
+    an ordinary word is capitalized in the middle of a sentence.
+    """
 
     index = start - 1
     while index >= 0 and text[index].isspace():
+        if text[index] in "\r\n":
+            return True
         index -= 1
-    while index >= 0 and text[index] in _QUOTE_OR_BRACKET:
-        index -= 1
-    return index < 0 or text[index] in _SENTENCE_END
+    if index < 0:
+        return True
+    if text[index] in _OPENING_BOUNDARY:
+        return True
+    return text[index] in _SENTENCE_END
 
 
 def observe_tokens(text: str) -> tuple[TokenObservation, ...]:

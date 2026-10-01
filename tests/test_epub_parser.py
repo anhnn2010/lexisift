@@ -78,3 +78,24 @@ def test_html_title_is_not_in_visible_section_text(tmp_path: Path) -> None:
 
     assert "Fallback Two" not in book.sections[0].text
     assert "Hello two." in book.sections[0].text
+
+
+def test_epub_parser_preserves_block_boundaries_for_casing_context(tmp_path: Path) -> None:
+    epub_path = tmp_path / "book.epub"
+    _write_test_epub(epub_path)
+
+    book = load_epub(epub_path)
+
+    assert "second\nHello two." in book.sections[0].text
+    assert book.sections[0].title == "Second"
+
+
+def test_heading_capitalization_is_not_used_as_visible_casing_evidence(tmp_path: Path) -> None:
+    epub_path = tmp_path / "book.epub"
+    _write_test_epub(epub_path)
+
+    book = load_epub(epub_path)
+
+    assert book.sections[0].title == "Second"
+    assert book.sections[0].text.startswith("second")
+    assert not book.sections[0].text.startswith("Second")

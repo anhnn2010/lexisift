@@ -27,6 +27,7 @@ class _XhtmlTextExtractor(HTMLParser):
 
     _IGNORED_TAGS = {"script", "style", "svg"}
     _HEADING_TAGS = {"h1", "h2", "h3"}
+    _BLOCK_TAGS = {"p", "div", "li", "section", "article", "blockquote"} | _HEADING_TAGS
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -52,8 +53,10 @@ class _XhtmlTextExtractor(HTMLParser):
             self._heading_depth += 1
         if tag == "title":
             self._title_depth += 1
-        if tag in {"p", "div", "br", "li", "section", "article", "blockquote"} | self._HEADING_TAGS:
-            self._chunks.append(" ")
+        if tag == "br":
+            self._chunks.append("\n")
+        elif tag in self._BLOCK_TAGS:
+            self._chunks.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.casefold()
@@ -67,8 +70,8 @@ class _XhtmlTextExtractor(HTMLParser):
             self._heading_depth -= 1
         if tag == "title" and self._title_depth:
             self._title_depth -= 1
-        if tag in {"p", "div", "li", "section", "article", "blockquote"} | self._HEADING_TAGS:
-            self._chunks.append(" ")
+        if tag in self._BLOCK_TAGS:
+            self._chunks.append("\n")
 
     def handle_data(self, data: str) -> None:
         if self._ignored_depth:
@@ -78,15 +81,26 @@ class _XhtmlTextExtractor(HTMLParser):
         if self._title_depth:
             self._title_chunks.append(data)
             return
-        self._chunks.append(data)
+        # Heading typography is layout evidence, not lexical casing evidence.
+        # Keep the original heading for section titles, but normalize the visible
+        # text copy so Title Case / ALL CAPS headings do not create proper-noun votes.
+        self._chunks.append(data.casefold() if self._heading_depth else data)
         if self._heading_depth:
             self._heading_chunks.append(data)
 
     @property
     def text(self) -> str:
-        """Return normalized visible text."""
+        """Return normalized visible text while preserving block boundaries.
 
-        return " ".join("".join(self._chunks).split())
+        Newlines are semantically useful to downstream casing analysis: the first
+        word of a heading, list item, paragraph, or block quote should not look
+        like an arbitrary mid-sentence capitalized token. Tokenization still
+        treats the newlines as whitespace, so word counts remain unchanged.
+        """
+
+        raw = "".join(self._chunks)
+        lines = [" ".join(line.split()) for line in raw.splitlines()]
+        return "\n".join(line for line in lines if line)
 
     @property
     def title(self) -> str | None:

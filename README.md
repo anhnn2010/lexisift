@@ -6,7 +6,7 @@ LexiSift is a local, offline-first Python CLI for analyzing vocabulary in EPUB b
 
 ## Current version
 
-`0.6.0`
+`0.6.1`
 
 ## Requirements
 
@@ -171,7 +171,7 @@ Frequency remains the main signal, while vocabulary that recurs across more of t
 
 ### `proper_nouns.csv`
 
-Likely names and other proper nouns detected from book-local capitalization evidence. LexiSift keeps these entries in raw vocabulary and lemma statistics, but removes them from `learning_words.csv`. Detection is deliberately conservative: a lemma must be capitalized in at least 80% of its occurrences and must also appear capitalized away from sentence-initial position. The report includes capitalization counts so detections can be audited.
+Likely names and other proper nouns detected from book-local capitalization evidence. LexiSift keeps these entries in raw vocabulary and lemma statistics, but removes them from `learning_words.csv`. Detection is deliberately conservative: a lemma must be capitalized in at least 80% of its occurrences and must also appear capitalized away from sentence-like boundaries. EPUB paragraph/heading/list boundaries and opening quoted dialogue are preserved as sentence-like starts so ordinary words capitalized only by layout or dialogue are less likely to be filtered. The report includes capitalization counts so detections can be audited.
 
 ### `coverage.csv`
 

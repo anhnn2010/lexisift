@@ -56,3 +56,23 @@ def test_observe_tokens_preserves_capitalization_and_sentence_position() -> None
     assert ("Katie", "katie", False) in by_surface
     brain_rows = [row for row in by_surface if row[1] == "brain"]
     assert brain_rows == [("Brain", "brain", True), ("brain", "brain", False)]
+
+
+def test_observe_tokens_treats_newline_as_sentence_boundary() -> None:
+    from lexisift.analysis.tokenizer import observe_tokens
+
+    observations = observe_tokens("Previous text without punctuation\nPlease read this")
+    please = next(item for item in observations if item.word == "please")
+
+    assert please.sentence_initial
+
+
+def test_observe_tokens_treats_opening_quote_as_sentence_boundary() -> None:
+    from lexisift.analysis.tokenizer import observe_tokens
+
+    observations = observe_tokens('He said, "Please sit here." Tina answered.')
+    please = next(item for item in observations if item.word == "please")
+    tina = next(item for item in observations if item.word == "tina")
+
+    assert please.sentence_initial
+    assert tina.sentence_initial
